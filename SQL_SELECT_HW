@@ -1,0 +1,485 @@
+--part 1 
+
+WITH animation_films AS (
+  SELECT f.film_id, f.title, f.release_year, f.rental_rate
+  FROM sakila.film AS f
+  INNER JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+  INNER JOIN sakila.category AS c ON c.category_id = fc.category_id
+  WHERE c.name = 'Animation'
+    AND f.release_year BETWEEN 2017 AND 2019
+    AND f.rental_rate > 1
+)
+SELECT title, release_year, rental_rate
+FROM animation_films
+ORDER BY title ASC;
+
+/* ============ Subquery (derived table) ============ */
+SELECT af.title, af.release_year, af.rental_rate
+FROM (
+  SELECT f.film_id, f.title, f.release_year, f.rental_rate
+  FROM sakila.film AS f
+  INNER JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+  INNER JOIN sakila.category AS c ON c.category_id = fc.category_id
+  WHERE c.name = 'Animation'
+    AND f.release_year BETWEEN 2017 AND 2019
+    AND f.rental_rate > 1
+) AS af
+ORDER BY af.title ASC;
+
+/* ============ JOIN-вариант (single SELECT) ============ */
+SELECT f.title, f.release_year, f.rental_rate
+FROM sakila.film AS f
+INNER JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+INNER JOIN sakila.category AS c ON c.category_id = fc.category_id
+WHERE c.name = 'Animation'
+  AND f.release_year BETWEEN 2017 AND 2019
+  AND f.rental_rate > 1
+ORDER BY f.title ASC;
+
+
+----1.2
+
+/* ============ CTE ============ */
+WITH payments_since_apr2017 AS (
+  SELECT p.payment_id, p.amount, p.payment_date, r.inventory_id
+  FROM sakila.payment AS p
+  INNER JOIN sakila.rental  AS r ON r.rental_id = p.rental_id
+  WHERE p.payment_date >= DATE '2017-04-01'
+),
+store_map AS (
+  SELECT i.inventory_id, s.store_id, a.address, a.address2
+  FROM sakila.inventory AS i
+  INNER JOIN sakila.store     AS s ON s.store_id = i.store_id
+  INNER JOIN sakila.address   AS a ON a.address_id = s.address_id
+)
+SELECT 
+  sm.store_id,
+  TRIM(CONCAT(sm.address, ' ', COALESCE(sm.address2, ''))) AS address_full,
+  SUM(ps.amount) AS revenue
+FROM payments_since_apr2017 AS ps
+INNER JOIN store_map AS sm ON sm.inventory_id = ps.inventory_id
+GROUP BY sm.store_id, address_full
+ORDER BY revenue DESC;
+
+/* ============ Subquery ============ */
+SELECT 
+  t.store_id,
+  TRIM(CONCAT(t.address, ' ', COALESCE(t.address2, ''))) AS address_full,
+  SUM(t.amount) AS revenue
+FROM (
+  SELECT 
+    s.store_id,
+    a.address,
+    a.address2,
+    p.amount
+  FROM sakila.payment AS p
+  INNER JOIN sakila.rental   AS r  ON r.rental_id = p.rental_id
+  INNER JOIN sakila.inventory AS i ON i.inventory_id = r.inventory_id
+  INNER JOIN sakila.store     AS s ON s.store_id = i.store_id
+  INNER JOIN sakila.address   AS a ON a.address_id = s.address_id
+  WHERE p.payment_date >= DATE '2017-04-01'
+) AS t
+GROUP BY t.store_id, address_full
+ORDER BY revenue DESC;
+
+/* ============ JOIN-вариант ============ */
+SELECT 
+  s.store_id,
+  TRIM(CONCAT(a.address, ' ', COALESCE(a.address2, ''))) AS address_full,
+  SUM(p.amount) AS revenue
+FROM sakila.payment   AS p
+INNER JOIN sakila.rental    AS r ON r.rental_id = p.rental_id
+INNER JOIN sakila.inventory AS i ON i.inventory_id = r.inventory_id
+INNER JOIN sakila.store     AS s ON s.store_id = i.store_id
+INNER JOIN sakila.address   AS a ON a.address_id = s.address_id
+WHERE p.payment_date >= DATE '2017-04-01'
+GROUP BY s.store_id, address_full
+ORDER BY revenue DESC;
+
+
+--1.3
+/* ============ CTE ============ */
+WITH films_after_2015 AS (
+  SELECT f.film_id
+  FROM sakila.film AS f
+  WHERE f.release_year > 2015
+)
+SELECT a.first_name, a.last_name, COUNT(*) AS number_of_movies
+FROM sakila.actor AS a
+INNER JOIN sakila.film_actor AS fa ON fa.actor_id = a.actor_id
+INNER JOIN films_after_2015   AS f2 ON f2.film_id = fa.film_id
+GROUP BY a.first_name, a.last_name
+ORDER BY number_of_movies DESC, a.last_name, a.first_name
+LIMIT 5;
+
+/* ============ Subquery ============ */
+SELECT a.first_name, a.last_name, COUNT(*) AS number_of_movies
+FROM sakila.actor AS a
+INNER JOIN sakila.film_actor AS fa ON fa.actor_id = a.actor_id
+INNER JOIN (
+  SELECT film_id FROM sakila.film WHERE release_year > 2015
+) AS f2 ON f2.film_id = fa.film_id
+GROUP BY a.first_name, a.last_name
+ORDER BY number_of_movies DESC, a.last_name, a.first_name
+LIMIT 5;
+
+/* ============ JOIN-вариант ============ */
+SELECT a.first_name, a.last_name, COUNT(*) AS number_of_movies
+FROM sakila.actor AS a
+INNER JOIN sakila.film_actor AS fa ON fa.actor_id = a.actor_id
+INNER JOIN sakila.film       AS f  ON f.film_id   = fa.film_id
+WHERE f.release_year > 2015
+GROUP BY a.first_name, a.last_name
+ORDER BY number_of_movies DESC, a.last_name, a.first_name
+LIMIT 5;
+
+
+---1.4
+
+/* ============ CTE ============ */
+WITH film_with_cat AS (
+  SELECT f.film_id, f.release_year, c.name AS category_name
+  FROM sakila.film AS f
+  LEFT JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+  LEFT JOIN sakila.category      AS c  ON c.category_id = fc.category_id
+)
+SELECT 
+  release_year,
+  SUM(CASE WHEN category_name = 'Drama'       THEN 1 ELSE 0 END) AS number_of_drama_movies,
+  SUM(CASE WHEN category_name = 'Travel'      THEN 1 ELSE 0 END) AS number_of_travel_movies,
+  SUM(CASE WHEN category_name = 'Documentary' THEN 1 ELSE 0 END) AS number_of_documentary_movies
+FROM film_with_cat
+GROUP BY release_year
+ORDER BY release_year DESC;
+
+/* ============ Subquery ============ */
+SELECT 
+  t.release_year,
+  SUM(CASE WHEN t.category_name = 'Drama'       THEN 1 ELSE 0 END) AS number_of_drama_movies,
+  SUM(CASE WHEN t.category_name = 'Travel'      THEN 1 ELSE 0 END) AS number_of_travel_movies,
+  SUM(CASE WHEN t.category_name = 'Documentary' THEN 1 ELSE 0 END) AS number_of_documentary_movies
+FROM (
+  SELECT f.film_id, f.release_year, c.name AS category_name
+  FROM sakila.film AS f
+  LEFT JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+  LEFT JOIN sakila.category      AS c  ON c.category_id = fc.category_id
+) AS t
+GROUP BY t.release_year
+ORDER BY t.release_year DESC;
+
+/* ============ JOIN-вариант ============ */
+SELECT 
+  f.release_year,
+  SUM(CASE WHEN c.name = 'Drama'       THEN 1 ELSE 0 END) AS number_of_drama_movies,
+  SUM(CASE WHEN c.name = 'Travel'      THEN 1 ELSE 0 END) AS number_of_travel_movies,
+  SUM(CASE WHEN c.name = 'Documentary' THEN 1 ELSE 0 END) AS number_of_documentary_movies
+FROM sakila.film AS f
+LEFT JOIN sakila.film_category AS fc ON fc.film_id = f.film_id
+LEFT JOIN sakila.category      AS c  ON c.category_id = fc.category_id
+GROUP BY f.release_year
+ORDER BY f.release_year DESC;
+
+
+
+----2.1
+/* ============ CTE ============ */
+WITH pay17 AS (
+  SELECT p.payment_id, p.amount, p.payment_date, p.staff_id, r.inventory_id
+  FROM sakila.payment AS p
+  INNER JOIN sakila.rental AS r ON r.rental_id = p.rental_id
+  WHERE p.payment_date >= DATE '2017-01-01'
+    AND p.payment_date <  DATE '2018-01-01'
+),
+rev17 AS (
+  SELECT staff_id, SUM(amount) AS revenue_2017
+  FROM pay17
+  GROUP BY staff_id
+),
+last_store AS (
+  SELECT
+    p1.staff_id,
+    s.store_id
+  FROM pay17 AS p1
+  INNER JOIN sakila.inventory AS i ON i.inventory_id = p1.inventory_id
+  INNER JOIN sakila.store     AS s ON s.store_id     = i.store_id
+  WHERE p1.payment_date = (
+    SELECT MAX(p2.payment_date)
+    FROM pay17 AS p2
+    WHERE p2.staff_id = p1.staff_id
+  )
+)
+SELECT st.staff_id,
+       st.first_name,
+       st.last_name,
+       ls.store_id    AS last_store_id_2017,
+       rv.revenue_2017
+FROM rev17 AS rv
+INNER JOIN sakila.staff AS st ON st.staff_id = rv.staff_id
+LEFT  JOIN last_store   AS ls ON ls.staff_id = rv.staff_id
+ORDER BY rv.revenue_2017 DESC, st.last_name, st.first_name
+LIMIT 3;
+
+/* ============ Subquery ============ */
+SELECT
+  st.staff_id,
+  st.first_name,
+  st.last_name,
+  (
+    SELECT s.store_id
+    FROM sakila.payment AS p1
+    INNER JOIN sakila.rental    AS r1 ON r1.rental_id = p1.rental_id
+    INNER JOIN sakila.inventory AS i1 ON i1.inventory_id = r1.inventory_id
+    INNER JOIN sakila.store     AS s  ON s.store_id = i1.store_id
+    WHERE p1.payment_date >= DATE '2017-01-01'
+      AND p1.payment_date <  DATE '2018-01-01'
+      AND p1.staff_id = st.staff_id
+    ORDER BY p1.payment_date DESC
+    LIMIT 1
+  ) AS last_store_id_2017,
+  (
+    SELECT SUM(p.amount)
+    FROM sakila.payment AS p
+    WHERE p.payment_date >= DATE '2017-01-01'
+      AND p.payment_date <  DATE '2018-01-01'
+      AND p.staff_id = st.staff_id
+  ) AS revenue_2017
+FROM sakila.staff AS st
+WHERE (
+  SELECT SUM(p.amount)
+  FROM sakila.payment AS p
+  WHERE p.payment_date >= DATE '2017-01-01'
+    AND p.payment_date <  DATE '2018-01-01'
+    AND p.staff_id = st.staff_id
+) IS NOT NULL
+ORDER BY revenue_2017 DESC, st.last_name, st.first_name
+LIMIT 3;
+
+/* ============ JOIN-вариант ============ */
+-- В JOIN-варианте без окон найдём rev по staff, а last_store — через коррелированный подзапрос:
+SELECT
+  st.staff_id,
+  st.first_name,
+  st.last_name,
+  (
+    SELECT s.store_id
+    FROM sakila.payment AS p1
+    INNER JOIN sakila.rental    AS r1 ON r1.rental_id = p1.rental_id
+    INNER JOIN sakila.inventory AS i1 ON i1.inventory_id = r1.inventory_id
+    INNER JOIN sakila.store     AS s  ON s.store_id = i1.store_id
+    WHERE p1.payment_date >= DATE '2017-01-01'
+      AND p1.payment_date <  DATE '2018-01-01'
+      AND p1.staff_id = st.staff_id
+    ORDER BY p1.payment_date DESC
+    LIMIT 1
+  ) AS last_store_id_2017,
+  rv.revenue_2017
+FROM (
+  SELECT p.staff_id, SUM(p.amount) AS revenue_2017
+  FROM sakila.payment AS p
+  WHERE p.payment_date >= DATE '2017-01-01'
+    AND p.payment_date <  DATE '2018-01-01'
+  GROUP BY p.staff_id
+) AS rv
+INNER JOIN sakila.staff AS st ON st.staff_id = rv.staff_id
+ORDER BY rv.revenue_2017 DESC, st.last_name, st.first_name
+LIMIT 3;
+
+--2.2
+/* ============ CTE ============ */
+WITH film_rentals AS (
+  SELECT i.film_id, COUNT(*) AS rentals_cnt
+  FROM sakila.rental AS r
+  INNER JOIN sakila.inventory AS i ON i.inventory_id = r.inventory_id
+  GROUP BY i.film_id
+)
+SELECT 
+  f.title,
+  fr.rentals_cnt,
+  f.rating,
+  CASE f.rating
+    WHEN 'G'      THEN 0
+    WHEN 'PG'     THEN 10
+    WHEN 'PG-13'  THEN 13
+    WHEN 'R'      THEN 17
+    WHEN 'NC-17'  THEN 18
+    ELSE NULL
+  END AS expected_age
+FROM film_rentals AS fr
+INNER JOIN sakila.film AS f ON f.film_id = fr.film_id
+ORDER BY fr.rentals_cnt DESC, f.title
+LIMIT 5;
+
+/* ============ Subquery ============ */
+SELECT 
+  f.title,
+  fr.rentals_cnt,
+  f.rating,
+  CASE f.rating
+    WHEN 'G'      THEN 0
+    WHEN 'PG'     THEN 10
+    WHEN 'PG-13'  THEN 13
+    WHEN 'R'      THEN 17
+    WHEN 'NC-17'  THEN 18
+    ELSE NULL
+  END AS expected_age
+FROM sakila.film AS f
+INNER JOIN (
+  SELECT i.film_id, COUNT(*) AS rentals_cnt
+  FROM sakila.rental AS r
+  INNER JOIN sakila.inventory AS i ON i.inventory_id = r.inventory_id
+  GROUP BY i.film_id
+) AS fr ON fr.film_id = f.film_id
+ORDER BY fr.rentals_cnt DESC, f.title
+LIMIT 5;
+
+/* ============ JOIN-вариант ============ */
+SELECT 
+  f.title,
+  COUNT(*) AS rentals_cnt,
+  f.rating,
+  CASE f.rating
+    WHEN 'G'      THEN 0
+    WHEN 'PG'     THEN 10
+    WHEN 'PG-13'  THEN 13
+    WHEN 'R'      THEN 17
+    WHEN 'NC-17'  THEN 18
+    ELSE NULL
+  END AS expected_age
+FROM sakila.rental AS r
+INNER JOIN sakila.inventory AS i ON i.inventory_id = r.inventory_id
+INNER JOIN sakila.film     AS f ON f.film_id      = i.film_id
+GROUP BY f.title, f.rating
+ORDER BY rentals_cnt DESC, f.title
+LIMIT 5;
+
+
+/* =======================================================================================
+   PART 3  — Actors’ inactivity
+   ======================================================================================= */
+
+/* -----------------------------------------------------------------------------
+   V1: Gap between latest release_year and current year per actor
+   Business interpretation:
+   - Для каждого актёра: current_year - MAX(release_year).
+   ----------------------------------------------------------------------------- */
+
+/* ============ CTE ============ */
+WITH last_year AS (
+  SELECT fa.actor_id, MAX(f.release_year) AS last_release_year
+  FROM sakila.film_actor AS fa
+  INNER JOIN sakila.film AS f ON f.film_id = fa.film_id
+  GROUP BY fa.actor_id
+)
+SELECT a.first_name, a.last_name,
+       (EXTRACT(YEAR FROM CURRENT_DATE) - ly.last_release_year) AS years_inactive
+FROM last_year AS ly
+INNER JOIN sakila.actor AS a ON a.actor_id = ly.actor_id
+ORDER BY years_inactive DESC, a.last_name, a.first_name;
+
+/* ============ Subquery ============ */
+SELECT a.first_name, a.last_name,
+       (EXTRACT(YEAR FROM CURRENT_DATE) - (
+          SELECT MAX(f.release_year)
+          FROM sakila.film_actor AS fa
+          INNER JOIN sakila.film AS f ON f.film_id = fa.film_id
+          WHERE fa.actor_id = a.actor_id
+       )) AS years_inactive
+FROM sakila.actor AS a
+WHERE EXISTS (
+  SELECT 1 FROM sakila.film_actor AS fa WHERE fa.actor_id = a.actor_id
+)
+ORDER BY years_inactive DESC, a.last_name, a.first_name;
+
+/* ============ JOIN-вариант ============ */
+SELECT a.first_name, a.last_name,
+       (EXTRACT(YEAR FROM CURRENT_DATE) - MAX(f.release_year)) AS years_inactive
+FROM sakila.actor AS a
+INNER JOIN sakila.film_actor AS fa ON fa.actor_id = a.actor_id
+INNER JOIN sakila.film       AS f  ON f.film_id   = fa.film_id
+GROUP BY a.first_name, a.last_name
+ORDER BY years_inactive DESC, a.last_name, a.first_name;
+
+--3 part
+
+/* ============ CTE ============ */
+WITH actor_years AS (
+  SELECT DISTINCT fa.actor_id, f.release_year
+  FROM sakila.film_actor AS fa
+  INNER JOIN sakila.film AS f ON f.film_id = fa.film_id
+),
+next_year AS (
+  SELECT ay.actor_id,
+         ay.release_year AS y1,
+         (
+           SELECT MIN(ay2.release_year)
+           FROM actor_years AS ay2
+           WHERE ay2.actor_id = ay.actor_id
+             AND ay2.release_year > ay.release_year
+         ) AS y2
+  FROM actor_years AS ay
+),
+gaps AS (
+  SELECT actor_id, (y2 - y1) AS gap
+  FROM next_year
+  WHERE y2 IS NOT NULL
+)
+SELECT a.first_name, a.last_name, MAX(g.gap) AS max_gap_years
+FROM gaps AS g
+INNER JOIN sakila.actor AS a ON a.actor_id = g.actor_id
+GROUP BY a.first_name, a.last_name
+ORDER BY max_gap_years DESC, a.last_name, a.first_name;
+
+/* ============ Subquery ============ */
+SELECT a.first_name, a.last_name, t.max_gap_years
+FROM sakila.actor AS a
+INNER JOIN (
+  SELECT g.actor_id, MAX(g.gap) AS max_gap_years
+  FROM (
+    SELECT ay.actor_id,
+           (
+             SELECT MIN(ay2.release_year)
+             FROM (
+               SELECT DISTINCT fa2.actor_id, f2.release_year
+               FROM sakila.film_actor AS fa2
+               INNER JOIN sakila.film AS f2 ON f2.film_id = fa2.film_id
+             ) AS ay2
+             WHERE ay2.actor_id = ay.actor_id
+               AND ay2.release_year > ay.release_year
+           ) - ay.release_year AS gap
+    FROM (
+      SELECT DISTINCT fa.actor_id, f.release_year
+      FROM sakila.film_actor AS fa
+      INNER JOIN sakila.film AS f ON f.film_id = fa.film_id
+    ) AS ay
+  ) AS g
+  WHERE g.gap IS NOT NULL
+  GROUP BY g.actor_id
+) AS t ON t.actor_id = a.actor_id
+ORDER BY t.max_gap_years DESC, a.last_name, a.first_name;
+
+/* ============ JOIN-вариант (без окон) ============ */
+-- Тут всё равно нужен коррелированный MIN(...) для "следующего года" — иначе без окон
+-- корректно найти соседей по времени сложно. JOIN-часть — внешняя агрегация.
+SELECT a.first_name, a.last_name, MAX(gy.gap) AS max_gap_years
+FROM sakila.actor AS a
+INNER JOIN (
+  SELECT ay.actor_id,
+         (
+           SELECT MIN(ay2.release_year)
+           FROM (
+             SELECT DISTINCT fa2.actor_id, f2.release_year
+             FROM sakila.film_actor AS fa2
+             INNER JOIN sakila.film AS f2 ON f2.film_id = fa2.film_id
+           ) AS ay2
+           WHERE ay2.actor_id = ay.actor_id
+             AND ay2.release_year > ay.release_year
+         ) - ay.release_year AS gap
+  FROM (
+    SELECT DISTINCT fa.actor_id, f.release_year
+    FROM sakila.film_actor AS fa
+    INNER JOIN sakila.film AS f ON f.film_id = fa.film_id
+  ) AS ay
+) AS gy ON gy.actor_id = a.actor_id
+WHERE gy.gap IS NOT NULL
+GROUP BY a.first_name, a.last_name
+ORDER BY max_gap_years DESC, a.last_name, a.first_name;
